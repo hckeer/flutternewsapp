@@ -1,0 +1,42 @@
+{
+  "name": "dengue-nepal-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:import:local": "tsx src/db/import-local-data.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.0",
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0",
+    "pg": "^8.22.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.1.0",
+    "@types/pg": "^8.20.0",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
