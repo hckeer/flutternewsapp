@@ -15,16 +15,32 @@ const NEPAL_DISTRICTS = [
   { code: 'DHG', nameEn: 'Dhangadhi', nameNe: 'धनगढी', provinceEn: 'Sudurpashchim' },
 ] as const;
 
-async function seed() {
-  const [existingAdmin] = await db.select().from(admins).limit(1);
-  if (!existingAdmin) {
-    const passwordHash = await bcrypt.hash(env.ADMIN_PASSWORD, 12);
+async function seedAdmin() {
+  const passwordHash = await bcrypt.hash(env.ADMIN_PASSWORD, 12);
+  const [existing] = await db
+    .select()
+    .from(admins)
+    .where(eq(admins.username, env.ADMIN_USERNAME))
+    .limit(1);
+
+  if (!existing) {
     await db.insert(admins).values({
       username: env.ADMIN_USERNAME,
       passwordHash,
     });
-    console.log(`Seeded admin user: ${env.ADMIN_USERNAME}`);
+    console.log(`Created admin user: ${env.ADMIN_USERNAME}`);
+    return;
   }
+
+  await db
+    .update(admins)
+    .set({ passwordHash })
+    .where(eq(admins.username, env.ADMIN_USERNAME));
+  console.log(`Synced admin password for: ${env.ADMIN_USERNAME}`);
+}
+
+async function seed() {
+  await seedAdmin();
 
   for (const d of NEPAL_DISTRICTS) {
     const [existing] = await db
