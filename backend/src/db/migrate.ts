@@ -5,8 +5,10 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 
 const MIGRATIONS_FOLDER = './drizzle';
+const MIGRATIONS_SCHEMA = 'drizzle';
+const MIGRATIONS_TABLE = '__drizzle_migrations';
 
-async function baselineExistingSchema(pool: Pool) {
+async function schemaAlreadyExists(pool: Pool): Promise<boolean> {
   const client = await pool.connect();
   try {
     const { rows } = await client.query<{ exists: boolean }>(`
@@ -16,10 +18,18 @@ async function baselineExistingSchema(pool: Pool) {
         WHERE table_schema = 'public' AND table_name = 'admins'
       ) AS exists
     `);
-    if (!rows[0]?.exists) return;
+    return rows[0]?.exists ?? false;
+  } finally {
+    client.release();
+  }
+}
 
+async function baselineExistingSchema(pool: Pool) {
+  const client = await pool.connect();
+  try {
+    await client.query(`CREATE SCHEMA IF NOT EXISTS ${MIGRATIONS_SCHEMA}`);
     await client.query(`
-      CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
+      CREATE TABLE IF NOT EXISTS ${MIGRATIONS_SCHEMA}."${MIGRATIONS_TABLE}" (
         id SERIAL PRIMARY KEY,
         hash text NOT NULL,
         created_at bigint
@@ -28,7 +38,7 @@ async function baselineExistingSchema(pool: Pool) {
 
     const migrations = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER });
     const { rows: applied } = await client.query<{ hash: string }>(
-      `SELECT hash FROM "__drizzle_migrations"`,
+      `SELECT hash FROM ${MIGRATIONS_SCHEMA}."${MIGRATIONS_TABLE}"`,
     );
     const appliedHashes = new Set(applied.map((row) => row.hash));
 
@@ -36,15 +46,37 @@ async function baselineExistingSchema(pool: Pool) {
     for (const migration of migrations) {
       if (appliedHashes.has(migration.hash)) continue;
       await client.query(
-        `INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ($1, $2)`,
+        `INSERT INTO ${MIGRATIONS_SCHEMA}."${MIGRATIONS_TABLE}" (hash, created_at) VALUES ($1, $2)`,
         [migration.hash, migration.folderMillis],
       );
       baselined++;
     }
 
     if (baselined > 0) {
-      console.log(`Baselined ${baselined} migration(s) for existing schema`);
+      console.log(`Baselined ${baselined} migration(s) in ${MIGRATIONS_SCHEMA}.${MIGRATIONS_TABLE}`);
     }
+  } finally {
+    client.release();
+  }
+}
+
+async function migrationsAreCurrent(pool: Pool): Promise<boolean> {
+  const client = await pool.connect();
+  try {
+    const migrations = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER });
+    const latestMigrationMillis = Math.max(...migrations.map((m) => m.folderMillis));
+
+    const { rows } = await client.query<{ created_at: string }>(`
+      SELECT created_at
+      FROM ${MIGRATIONS_SCHEMA}."${MIGRATIONS_TABLE}"
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    if (rows.length === 0) return false;
+    return Number(rows[0].created_at) >= latestMigrationMillis;
+  } catch {
+    return false;
   } finally {
     client.release();
   }
@@ -62,7 +94,14 @@ async function runMigrations() {
   });
 
   try {
-    await baselineExistingSchema(pool);
+    if (await schemaAlreadyExists(pool)) {
+      await baselineExistingSchema(pool);
+      if (await migrationsAreCurrent(pool)) {
+        console.log('Existing schema detected; migrations already current');
+        return;
+      }
+    }
+
     const db = drizzle(pool);
     await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
     console.log('Database migrations applied');
